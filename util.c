@@ -10,9 +10,8 @@
 
 #define _GNU_SOURCE
 #include "cpuminer-config.h"
-
 #include <curses.h>
-#include "miner.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -34,6 +33,7 @@
 #include <netinet/tcp.h>
 #endif
 #include "compat.h"
+#include "miner.h"
 #include "elist.h"
 
 struct data_buffer {
@@ -161,7 +161,7 @@ void applog(int prio, const char *fmt, ...)
 	if(!opt_curses || display == NULL)
 	{
 		pthread_mutex_lock(&applog_lock);
-		vfprintf(stderr, f, ap);
+		vfprintf(stderr, f, ap);	/* atomic write to stderr */
 		fflush(stderr);
 		pthread_mutex_unlock(&applog_lock);
 	}
@@ -704,7 +704,7 @@ char *stratum_recv_line(struct stratum_ctx *sctx)
 		time_t rstart;
 
 		time(&rstart);
-		if (!socket_full(sctx->sock, 30)) {
+		if (!socket_full(sctx->sock, 60)) {
 			applog(LOG_ERR, "stratum_recv_line timed out");
 			goto out;
 		}
@@ -1051,7 +1051,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	}
 
 	pthread_mutex_lock(&sctx->work_lock);
-	
+
 	coinb1_size = strlen(coinb1) / 2;
 	coinb2_size = strlen(coinb2) / 2;
 	sctx->job.coinbase_size = coinb1_size + sctx->xnonce1_size +
@@ -1063,7 +1063,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	if (!sctx->job.job_id || strcmp(sctx->job.job_id, job_id))
 		memset(sctx->job.xnonce2, 0, sctx->xnonce2_size);
 	hex2bin(sctx->job.xnonce2 + sctx->xnonce2_size, coinb2, coinb2_size);
-	
+
 	free(sctx->job.job_id);
 	sctx->job.job_id = strdup(job_id);
 	hex2bin(sctx->job.prevhash, prevhash, 32);
@@ -1080,11 +1080,11 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	sctx->job.clean = clean;
 
 	sctx->job.diff = sctx->next_diff;
-	
+
 	pthread_mutex_unlock(&sctx->work_lock);
 
 	ret = true;
-	
+
 out:
 	return ret;
 }
