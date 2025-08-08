@@ -2080,7 +2080,7 @@ static void parse_cmdline(int argc, char *argv[])
 			argv[0], argv[optind]);
 		show_usage_and_exit(1);
 	}
-	
+
 	parse_config(argv[0]);
 }
 
@@ -2138,7 +2138,7 @@ int main(int argc, char *argv[])
 {
 	struct thr_info *thr;
 	long flags;
-	
+
 	pthread_mutex_init(&applog_lock, NULL);
 	pthread_mutex_init(&stats_lock, NULL);
 	pthread_mutex_init(&tui_lock, NULL);
@@ -2151,11 +2151,11 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&stratum->sock_lock, NULL);
 	pthread_mutex_init(&stratum->work_lock, NULL);
 	pthread_cond_init(&check_pool_cond, NULL);
-	
+
 	time(&time_start);
 
 	pools = init_pool_details();
-	
+
 	/* parse command line */
 	parse_cmdline(argc, argv);
 
@@ -2180,7 +2180,7 @@ int main(int argc, char *argv[])
 		applog(LOG_ERR, "CURL initialization failed");
 		return 1;
 	}
-	
+
 	opt_n_threads = 0;
 
 	device_list = gc3355_get_device_list();
@@ -2198,7 +2198,7 @@ int main(int argc, char *argv[])
 		} while(p!=NULL);
 		opt_n_threads = nn;
 	}
-	
+
 	if(!opt_n_threads)
 	{
 		applog(LOG_ERR, "No GC3355 devices specified, please use --gc3355-detect for auto-detection, or manually specify with --gc3355=DEV0,DEV1,...,DEVn");
@@ -2216,7 +2216,7 @@ int main(int argc, char *argv[])
 		start_tui();
 		pthread_mutex_unlock(&tui_lock);
 	}
-	
+
 	work_items = init_work_items();
 
 	work_restart = calloc(opt_n_threads, sizeof(*work_restart));
@@ -2234,13 +2234,13 @@ int main(int argc, char *argv[])
 	thr->q = tq_new();
 	if (!thr->q)
 		return 1;
-		
+
 	/* start work I/O thread */
 	if (pthread_create(&thr->pth, NULL, workio_thread, thr)) {
 		applog(LOG_ERR, "workio thread create failed");
 		return 1;
 	}
-	
+
 	check_pool_thr_id = opt_n_threads + 6;
 	thr = &thr_info[check_pool_thr_id];
 	thr->id = check_pool_thr_id;
@@ -2249,7 +2249,7 @@ int main(int argc, char *argv[])
 		applog(LOG_ERR, "check_pool thread create failed");
 		return 1;
 	}
-	
+
 	if (want_stratum) {
 		/* init stratum thread info */
 		stratum_thr_id = opt_n_threads + 2;
@@ -2306,9 +2306,10 @@ int main(int argc, char *argv[])
 
 	/* main loop - simply wait for workio thread to exit */
 	pthread_join(thr_info[work_thr_id].pth, NULL);
+
 	applog(LOG_INFO, "workio thread dead, exiting.");
-	
+
 	clean_up();
-	
+
 	return 0;
 }
