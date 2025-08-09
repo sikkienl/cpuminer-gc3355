@@ -3,11 +3,9 @@
 
 #include "cpuminer-config.h"
 
-#include <curses.h>
 #include <stdbool.h>
 #include <inttypes.h>
 #include <sys/time.h>
-
 #include <pthread.h>
 #include <jansson.h>
 #include <curl/curl.h>
@@ -163,97 +161,13 @@ struct thr_info {
 	int		id;
 	pthread_t	pth;
 	struct thread_q	*q;
+	unsigned char *devname;
 };
 
 struct work_restart {
 	volatile unsigned long	restart;
 	char			padding[128 - sizeof(unsigned long)];
 };
-
-struct display_window
-{
-	WINDOW *win;
-	unsigned int rows;
-	unsigned int cols;
-	unsigned short height;
-	unsigned short width;
-	unsigned int py;
-	unsigned int px;
-	unsigned short y;
-	unsigned short x;
-};
-struct display
-{
-	struct display_window *top;
-	struct display_window *summary;
-	struct display_window *stats;
-	struct display_window *log;
-};
-extern struct display *display;
-extern struct display_window* new_win(unsigned short height, unsigned short width, unsigned short y, unsigned short x);
-extern struct display_window* new_pad(unsigned int rows, unsigned int cols, unsigned short height, unsigned short width, unsigned short y, unsigned short x);
-extern void del_win(struct display_window *win);
-extern bool opt_curses;
-extern bool opt_log;
-extern char *log_path;
-#define TUI_SCROLL 2
-#define TUI_MIN_LOG 5
-#define TUI_MAX_STATS 20
-
-#ifdef WIN32
-#ifndef ASPRINTF_H
-#define ASPRINTF_H
-#if !defined(vasprintf)
-static int vasprintf(char **s, const char *format, va_list ap)
-{
-	/* Guess we need no more than 100 bytes. */
-	int n, size = 100;
-	va_list save_ap;
-
-	if ((*s = (char*) malloc(size)) == NULL)
-		return -1;
-	while (1) {
-		/* wwork on a copy of the va_list because of a bug
-		 in the vsnprintf implementation in x86_64 libc
-		 */
-#ifdef __va_copy
-		__va_copy(save_ap, ap);
-#else
-		save_ap = ap;
-#endif
-		/* Try to print in the allocated space. */
-		n = _vsnprintf(*s, size, format, save_ap);
-		va_end(save_ap);
-		/* If that worked, return the string. */
-		if (n > -1 && n < size) {
-			return n;
-		}
-		/* Else try again with more space. */
-		if (n > -1) { /* glibc 2.1 */
-			size = n + 1; /* precisely what is needed */
-		} else { /* glibc 2.0 */
-			size *= 2; /* twice the old size */
-		}
-		if ((*s = (char*) realloc(*s, size)) == NULL) {
-			return -1;
-		}
-	}
-}
-#endif
-#if !defined(asprintf)
-static int asprintf(char **s, const char *format, ...)
-{
-	va_list vals;
-	int result;
-
-	va_start(vals, format);
-	result = vasprintf(s, format, vals);
-	va_end(vals);
-	return result;
-}
-#endif
-#endif
-#endif
 
 extern bool opt_debug;
 extern bool opt_protocol;
@@ -267,7 +181,6 @@ extern char *opt_proxy;
 extern long opt_proxy_type;
 extern bool use_syslog;
 extern pthread_mutex_t applog_lock;
-extern pthread_mutex_t tui_lock;
 extern struct thr_info *thr_info;
 extern int longpoll_thr_id;
 extern int stratum_thr_id;
@@ -276,6 +189,7 @@ extern struct work_restart *work_restart;
 extern void applog(int prio, const char *fmt, ...);
 extern json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass,
 	const char *rpc_req, bool, bool, int *);
+//extern void bin2hex(char *s, const unsigned char *p, size_t len);
 extern char *bin2hex(const unsigned char *p, size_t len);
 extern bool hex2bin(unsigned char *p, const char *hexstr, size_t len);
 extern int timeval_subtract(struct timeval *result, struct timeval *x,
