@@ -10,7 +10,6 @@
 
 #define _GNU_SOURCE
 #include "cpuminer-config.h"
-#include <curses.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,78 +66,43 @@ struct thread_q {
 	pthread_cond_t		cond;
 };
 
-struct display_window* new_win(unsigned short height, unsigned short width, unsigned short y, unsigned short x)
-{
-	struct display_window *win = calloc(1, sizeof(struct display_window));
-	win->height = height;
-	win->width = width;
-	win->rows = height;
-	win->cols = width;
-	win->y = y;
-	win->x = x;
-	win->win = newwin(height, width, y, x);
-	return win;
-}
-
-struct display_window* new_pad(unsigned int rows, unsigned int cols, unsigned short height, unsigned short width, unsigned short y, unsigned short x)
-{
-	struct display_window *win = calloc(1, sizeof(struct display_window));
-	win->height = height;
-	win->width = width;
-	win->rows = rows;
-	win->cols = cols;
-	win->y = y;
-	win->x = x;
-	win->win = newpad(rows, cols);
-	return win;
-}
-
-void del_win(struct display_window *win)
-{
-	werase(win->win);
-	delwin(win->win);
-	free(win);
-}
-
 void applog(int prio, const char *fmt, ...)
 {
-	if(prio == LOG_DEBUG && !opt_debug) return;
-	
 	va_list ap;
 
 	va_start(ap, fmt);
 
-	char *f;
-	char *s;
-	int len;
-	time_t now;
-	struct tm tm, *tm_p;
-
-	time(&now);
-
-	pthread_mutex_lock(&applog_lock);
-	tm_p = localtime(&now);
-	memcpy(&tm, tm_p, sizeof(tm));
-	pthread_mutex_unlock(&applog_lock);
-
-	len = 40 + strlen(fmt) + 2;
-	f = alloca(len);
-	if(opt_debug)
-	{
-		struct timeval timestr;
-		gettimeofday(&timestr, NULL);
-		sprintf(f, "[%d-%02d-%02d %02d:%02d:%02d.%04d] %s\n",
-			tm.tm_year + 1900,
-			tm.tm_mon + 1,
-			tm.tm_mday,
-			tm.tm_hour,
-			tm.tm_min,
-			tm.tm_sec,
-			(int)(timestr.tv_usec / 100.0),
-			fmt);
+#ifdef HAVE_SYSLOG_H
+	if (use_syslog) {
+		va_list ap2;
+		char *buf;
+		int len;
+		
+		va_copy(ap2, ap);
+		len = vsnprintf(NULL, 0, fmt, ap2) + 1;
+		va_end(ap2);
+		buf = alloca(len);
+		if (vsnprintf(buf, len, fmt, ap) >= 0)
+			syslog(prio, "%s", buf);
 	}
-	else
-	{
+#else
+	if (0) {}
+#endif
+	else {
+		char *f;
+		int len;
+		time_t now;
+		struct tm tm, *tm_p;
+
+		time(&now);
+
+		pthread_mutex_lock(&applog_lock);
+		tm_p = localtime(&now);
+		memcpy(&tm, tm_p, sizeof(tm));
+		pthread_mutex_unlock(&applog_lock);
+
+		len = 40 + strlen(fmt) + 2;
+		f = alloca(len);
 		sprintf(f, "[%d-%02d-%02d %02d:%02d:%02d] %s\n",
 			tm.tm_year + 1900,
 			tm.tm_mon + 1,
@@ -147,34 +111,10 @@ void applog(int prio, const char *fmt, ...)
 			tm.tm_min,
 			tm.tm_sec,
 			fmt);
-	}
-	if(opt_log)
-	{
-		pthread_mutex_lock(&applog_lock);
-		FILE *fp; 
-		fp = fopen(log_path, "a");
-		vfprintf(fp, f, ap);
-		fflush(fp);
-		fclose(fp);
-		pthread_mutex_unlock(&applog_lock);
-	}
-	if(!opt_curses || display == NULL)
-	{
 		pthread_mutex_lock(&applog_lock);
 		vfprintf(stderr, f, ap);	/* atomic write to stderr */
 		fflush(stderr);
 		pthread_mutex_unlock(&applog_lock);
-	}
-	else
-	{
-		pthread_mutex_lock(&tui_lock);
-		if(vasprintf(&s, f, ap) >= 0)
-		{
-			waddstr(display->log->win, s);
-			free(s);
-			wrefresh(display->log->win);
-		}
-		pthread_mutex_unlock(&tui_lock);
 	}
 	va_end(ap);
 }
@@ -368,25 +308,19 @@ json_t *json_rpc_call(CURL *curl, const char *url,
 	char curl_err_str[CURL_ERROR_SIZE];
 	long timeout = longpoll ? opt_timeout : 30;
 	struct header_info hi = {0};
-	bool lp_scanning = longpoll_scan;
+	bool lp_scanning = longpoll_scan && !have_longpoll;
 
 	/* it is assumed that 'curl' is freshly [re]initialized at this pt */
 
 	if (opt_protocol)
 		curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
 	curl_easy_setopt(curl, CURLOPT_URL, url);
+	if (opt_cert)
+		curl_easy_setopt(curl, CURLOPT_CAINFO, opt_cert);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
 	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 	curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
-	if (getenv("http_proxy")) {
-		if (getenv("all_proxy"))
-			curl_easy_setopt(curl, CURLOPT_PROXY, getenv("all_proxy"));
-		else if (getenv("ALL_PROXY"))
-			curl_easy_setopt(curl, CURLOPT_PROXY, getenv("ALL_PROXY"));
-		else
-			curl_easy_setopt(curl, CURLOPT_PROXY, "");
-	}
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, all_data_cb);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &all_data);
 	curl_easy_setopt(curl, CURLOPT_READFUNCTION, upload_data_cb);
@@ -400,6 +334,10 @@ json_t *json_rpc_call(CURL *curl, const char *url,
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
 	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, resp_hdr_cb);
 	curl_easy_setopt(curl, CURLOPT_HEADERDATA, &hi);
+	if (opt_proxy) {
+		curl_easy_setopt(curl, CURLOPT_PROXY, opt_proxy);
+		curl_easy_setopt(curl, CURLOPT_PROXYTYPE, opt_proxy_type);
+	}
 	if (userpass) {
 		curl_easy_setopt(curl, CURLOPT_USERPWD, userpass);
 		curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
@@ -447,6 +385,7 @@ json_t *json_rpc_call(CURL *curl, const char *url,
 
 	/* If X-Long-Polling was found, activate long polling */
 	if (lp_scanning && hi.lp_path && !have_stratum) {
+		have_longpoll = true;
 		tq_push(thr_info[longpoll_thr_id].q, hi.lp_path);
 		hi.lp_path = NULL;
 	}
@@ -588,6 +527,30 @@ bool fulltest(const uint32_t *hash, const uint32_t *target)
 			rc = true;
 			break;
 		}
+	}
+
+	if (opt_debug) {
+		uint32_t hash_be[8], target_be[8];
+//		char hash_str[65], target_str[65];
+		char *hash_str, *target_str;
+		
+		for (i = 0; i < 8; i++) {
+			be32enc(hash_be + i, hash[7 - i]);
+			be32enc(target_be + i, target[7 - i]);
+		}
+//		bin2hex(hash_str, (unsigned char *)hash_be, 32);
+//		bin2hex(target_str, (unsigned char *)target_be, 32);
+		hash_str = bin2hex((unsigned char *)hash_be, 32);
+		target_str = bin2hex((unsigned char *)target_be, 32);
+
+		applog(LOG_DEBUG, "DEBUG: %s\nHash:   %s\nTarget: %s",
+			rc ? "hash <= target"
+			   : "hash > target (false positive)",
+			hash_str,
+			target_str);
+
+		free(hash_str);
+		free(target_str);
 	}
 
 	return rc;
@@ -801,6 +764,17 @@ bool stratum_connect(struct stratum_ctx *sctx, const char *url)
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, sctx->curl_err_str);
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
 	curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
+	if (opt_proxy && opt_proxy_type != CURLPROXY_HTTP) {
+		curl_easy_setopt(curl, CURLOPT_PROXY, opt_proxy);
+		curl_easy_setopt(curl, CURLOPT_PROXYTYPE, opt_proxy_type);
+	} else if (getenv("http_proxy")) {
+		if (getenv("all_proxy"))
+			curl_easy_setopt(curl, CURLOPT_PROXY, getenv("all_proxy"));
+		else if (getenv("ALL_PROXY"))
+			curl_easy_setopt(curl, CURLOPT_PROXY, getenv("ALL_PROXY"));
+		else
+			curl_easy_setopt(curl, CURLOPT_PROXY, "");
+	}
 #if LIBCURL_VERSION_NUM >= 0x070f06
 	curl_easy_setopt(curl, CURLOPT_SOCKOPTFUNCTION, sockopt_keepalive_cb);
 #endif
@@ -879,8 +853,10 @@ start:
 	else
 		sprintf(s, "{\"id\": 1, \"method\": \"mining.subscribe\", \"params\": [\"" USER_AGENT "\"]}");
 
-	if (!stratum_send_line(sctx, s))
+	if (!stratum_send_line(sctx, s)) {
+		applog(LOG_ERR, "stratum_subscribe send failed");
 		goto out;
+	}
 
 	if (!socket_full(sctx->sock, 30)) {
 		applog(LOG_ERR, "stratum_subscribe timed out");
@@ -1121,7 +1097,7 @@ static bool stratum_reconnect(struct stratum_ctx *sctx, json_t *params)
 		port = json_integer_value(port_val);
 	if (!host || !port)
 		return false;
-	
+
 	free(sctx->url);
 	sctx->url = malloc(32 + strlen(host));
 	sprintf(sctx->url, "stratum+tcp://%s:%d", host, port);
