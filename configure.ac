@@ -102,58 +102,7 @@ AC_CHECK_LIB([pthread], [pthread_create], PTHREAD_LIBS="-lpthread",
       AC_CHECK_LIB([pthreadGC], [pthread_create], PTHREAD_LIBS="-lpthreadGC"
 ))))
 
-curses="auto"
-
-AC_ARG_WITH([curses],
-	[AC_HELP_STRING([--without-curses],[Compile support for curses TUI (default enabled)])],
-	[curses=$withval]
-	)
-if test "x$curses" = "xno"; then
-	cursesmsg='User specified --without-curses. TUI support DISABLED'
-else
-	AC_SEARCH_LIBS(addstr, ncurses pdcurses, [
-		curses=yes
-		cursesmsg="FOUND: ${ac_cv_search_addstr}"
-		AC_DEFINE([HAVE_CURSES], [1], [Defined to 1 if curses TUI support is wanted])
-	], [
-		if test "x$curses" = "xyes"; then
-			AC_MSG_ERROR([Could not find curses library - please install libncurses-dev or pdcurses-dev (or configure --without-curses)])
-		else
-			AC_MSG_WARN([Could not find curses library - if you want a TUI, install libncurses-dev or pdcurses-dev])
-			curses=no
-			cursesmsg='NOT FOUND. TUI support DISABLED'
-		fi
-	])
-fi
-
-AC_CHECK_HEADER([libudev.h],[
-	libudev=yes
-	UDEV_LIBS=-ludev
-	AC_DEFINE([HAVE_LIBUDEV], [1], [Defined to 1 if libudev is wanted])
-], [
-	if test "x$libudev" = "xyes"; then
-		AC_MSG_ERROR([libudev not found])
-	fi
-	libudev=no
-])
-
-AC_CHECK_HEADERS([setupapi.h initguid.h],[
-	setupapi=yes
-	SETUPAPI_LIBS=-lsetupapi
-	AC_DEFINE([HAVE_SETUPAPI], [1], [Defined to 1 if setupapi is wanted])
-], [
-	if test "x$setupapi" = "xyes"; then
-		AC_MSG_ERROR([setupapi not found])
-	fi
-	setupapi=no
-], [[
-	#ifdef HAVE_SETUPAPI_H
-	#include <setupapi.h>
-	#endif
-]])
-
 AM_CONDITIONAL([WANT_JANSSON], [test x$request_jansson = xtrue])
-AM_CONDITIONAL([HAVE_CURSES], [test x$curses = xyes])
 AM_CONDITIONAL([HAVE_WINDOWS], [test x$have_win32 = xtrue])
 AM_CONDITIONAL([USE_ASM], [test x$enable_assembly != xno])
 AM_CONDITIONAL([ARCH_x86], [test x$have_x86 = xtrue])
@@ -174,10 +123,6 @@ AC_SUBST(JANSSON_LIBS)
 AC_SUBST(PTHREAD_FLAGS)
 AC_SUBST(PTHREAD_LIBS)
 AC_SUBST(WS2_LIBS)
-AC_SUBST(NCURSES_LIBS)
-AC_SUBST(PDCURSES_LIBS)
-AC_SUBST(UDEV_LIBS)
-AC_SUBST(SETUPAPI_LIBS)
 
 AC_CONFIG_FILES([
 	Makefile
