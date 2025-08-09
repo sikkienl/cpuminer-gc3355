@@ -38,6 +38,8 @@
 #include "compat.h"
 #include "miner.h"
 
+#include "neoscrypt.h"
+
 #define PROGRAM_NAME		"minerd"
 #define DEF_RPC_URL		"http://127.0.0.1:9332/"
 #define LP_SCANTIME		60
@@ -101,11 +103,15 @@ struct workio_cmd {
 };
 
 enum sha256_algos {
-	ALGO_SCRYPT,		/* scrypt(1024,1,1) */
+	ALGO_NEOSCRYPT,		/* NeoScrypt(128, 2, 1) with Salsa20/20 and ChaCha20/20 */
+	ALGO_ALTSCRYPT,		/* Scrypt(1024, 1, 1) with Salsa20/8 through NeoScrypt */
+	ALGO_SCRYPT,		/* Scrypt(1024, 1, 1) with Salsa20/8 */
 	ALGO_SHA256D,		/* SHA-256d */
 };
 
 static const char *algo_names[] = {
+	[ALGO_NEOSCRYPT]	= "neoscrypt",
+	[ALGO_ALTSCRYPT]	= "altscrypt",
 	[ALGO_SCRYPT]		= "scrypt",
 	[ALGO_SHA256D]		= "sha256d",
 };
@@ -288,13 +294,13 @@ static bool jobj_binary(const json_t *obj, const char *key,
 static bool work_decode(const json_t *val, struct work *work)
 {
 	int i;
-	
+
 	if (unlikely(!jobj_binary(val, "data", work->data, sizeof(work->data)))) {
-		applog(LOG_ERR, "JSON inval data");
+		applog(LOG_ERR, "JSON invalid data");
 		goto err_out;
 	}
 	if (unlikely(!jobj_binary(val, "target", work->target, sizeof(work->target)))) {
-		applog(LOG_ERR, "JSON inval target");
+		applog(LOG_ERR, "JSON invalid target");
 		goto err_out;
 	}
 
@@ -987,7 +993,7 @@ static void *stratum_thread(void *userdata)
 			time(&g_work_time);
 			pthread_mutex_unlock(&g_work_lock);
 			if (stratum.job.clean) {
-				applog(LOG_INFO, "Stratum detected new block");
+				applog(LOG_INFO, "Stratum requested work restart");
 				restart_threads();
 			}
 		}
