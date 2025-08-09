@@ -19,7 +19,8 @@ minerd_SOURCES	= \
 	elist.h \
 	miner.h \
 	compat.h \
-	cpu-miner.c util.c \
+	cpu-miner.c \
+	util.c \
 	gc3355.h \
 	scrypt.c\ 
 	sha2.c 
@@ -36,6 +37,6 @@ minerd_SOURCES += sha2-arm.S scrypt-arm.S
 endif
 endif
 minerd_LDFLAGS	= $(PTHREAD_FLAGS)
-minerd_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ @NCURSES_LIBS@ @PDCURSES_LIBS@ @UDEV_LIBS@ @SETUPAPI_LIBS@
+minerd_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@
 minerd_CPPFLAGS = @LIBCURL_CPPFLAGS@
 
